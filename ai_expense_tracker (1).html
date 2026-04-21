@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Spendwise — AI Expense Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=Syne:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0d0f;
+  --bg2:#141416;
+  --bg3:#1c1c20;
+  --bg4:#242428;
+  --line:rgba(255,255,255,0.07);
+  --line2:rgba(255,255,255,0.12);
+  --ink:#f0ede8;
+  --ink2:#a8a5a0;
+  --ink3:#5a5855;
+  --food:#ff6b47;
+  --travel:#4d9fff;
+  --entertainment:#b86bff;
+  --shopping:#ffb347;
+  --bills:#4ddb9f;
+  --health:#ff4d88;
+  --other:#888;
+  --accent:#ff6b47;
+  --accent2:#ffb347;
+  --glow:rgba(255,107,71,0.15);
+}
+html{scroll-behavior:smooth}
+body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;overflow-x:hidden}
+
+/* GRAIN OVERLAY */
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:1000;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  opacity:0.4;
+}
+
+/* AMBIENT GLOW BG */
+.ambient{position:fixed;pointer-events:none;z-index:0;border-radius:50%;filter:blur(80px);opacity:0.12}
+.ambient-1{width:400px;height:400px;background:#ff6b47;top:-100px;right:-100px;animation:drift1 12s ease-in-out infinite}
+.ambient-2{width:300px;height:300px;background:#4d9fff;bottom:0;left:-80px;animation:drift2 15s ease-in-out infinite}
+@keyframes drift1{0%,100%{transform:translate(0,0)}50%{transform:translate(-30px,40px)}}
+@keyframes drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(40px,-30px)}}
+
+.app{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:0 20px 100px}
+
+/* HEADER */
+.header{padding:40px 0 28px;display:flex;justify-content:space-between;align-items:flex-end}
+.logo{display:flex;flex-direction:column;gap:2px}
+.logo-name{font-family:'Playfair Display',serif;font-size:30px;font-weight:700;letter-spacing:-0.5px;line-height:1}
+.logo-name span{color:var(--accent)}
+.logo-sub{font-size:11px;color:var(--ink3);letter-spacing:2px;text-transform:uppercase;font-weight:600}
+.header-total{text-align:right}
+.header-total-label{font-size:10px;color:var(--ink3);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px}
+.header-total-val{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:500;color:var(--ink)}
+.header-total-val .currency{font-size:14px;color:var(--ink3);margin-right:2px}
+
+/* NAV */
+.nav{display:flex;gap:4px;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:4px;margin-bottom:28px}
+.nav-btn{flex:1;padding:9px 6px;font-size:12px;font-weight:600;font-family:'Syne',sans-serif;letter-spacing:0.5px;text-transform:uppercase;border:none;background:transparent;color:var(--ink3);border-radius:10px;cursor:pointer;transition:all .25s;position:relative}
+.nav-btn.active{background:var(--bg4);color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,0.4)}
+.nav-btn.active::after{content:'';position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);width:16px;height:2px;background:var(--accent);border-radius:2px}
+
+/* PANELS */
+.panel{display:none;animation:fadeUp .3s ease}
+.panel.active{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ─── ADD EXPENSE ─── */
+.add-card{background:var(--bg2);border:1px solid var(--line);border-radius:20px;padding:20px;margin-bottom:16px}
+.add-card-title{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--ink3);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.ai-indicator{display:inline-flex;align-items:center;gap:5px;background:rgba(255,107,71,0.1);border:1px solid rgba(255,107,71,0.2);border-radius:20px;padding:3px 10px;font-size:10px;color:var(--accent);letter-spacing:1px}
+.ai-dot{width:5px;height:5px;border-radius:50%;background:var(--accent);animation:blink 1.5s ease infinite}
+@keyframes blink{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.3;transform:scale(0.7)}}
+
+.input-row{display:flex;gap:10px;margin-bottom:12px}
+.inp-wrap{flex:1;position:relative}
+.inp-label{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--ink3);margin-bottom:5px}
+.inp{width:100%;padding:11px 14px;background:var(--bg3);border:1px solid var(--line);border-radius:12px;color:var(--ink);font-size:14px;font-family:'Syne',sans-serif;transition:border-color .2s,box-shadow .2s;outline:none;appearance:none}
+.inp:focus{border-color:rgba(255,107,71,0.5);box-shadow:0 0 0 3px rgba(255,107,71,0.08)}
+.inp::placeholder{color:var(--ink3)}
+.inp-amt{font-family:'JetBrains Mono',monospace;font-size:15px}
+.inp-prefix{position:absolute;bottom:11px;left:12px;font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--ink3)}
+.inp-amt-field{padding-left:26px!important}
+
+/* Payment method select */
+.pay-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.pay-opt{position:relative}
+.pay-opt input[type=radio]{position:absolute;opacity:0;width:0;height:0}
+.pay-opt label{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 8px;background:var(--bg3);border:1px solid var(--line);border-radius:12px;cursor:pointer;transition:all .2s;text-align:center}
+.pay-opt label .pay-icon{font-size:20px;line-height:1}
+.pay-opt label .pay-name{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--ink3)}
+.pay-opt input:checked+label{background:rgba(255,107,71,0.1);border-color:rgba(255,107,71,0.4);box-shadow:0 0 0 1px rgba(255,107,71,0.2)}
+.pay-opt input:checked+label .pay-name{color:var(--accent)}
+
+.add-btn{width:100%;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:12px;font-size:13px;font-weight:700;font-family:'Syne',sans-serif;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.add-btn::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.15),transparent);opacity:0;transition:opacity .2s}
+.add-btn:hover::before{opacity:1}
+.add-btn:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(255,107,71,0.35)}
+.add-btn:active{transform:translateY(0)}
+.add-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none;box-shadow:none}
+
+.thinking-row{display:flex;align-items:center;gap:8px;padding:10px 0;font-size:13px;color:var(--accent);font-style:italic}
+.thinking-dots span{display:inline-block;animation:dot-bounce .8s ease infinite}
+.thinking-dots span:nth-child(2){animation-delay:.15s}
+.thinking-dots span:nth-child(3){animation-delay:.3s}
+@keyframes dot-bounce{0%,80%,100%{transform:translateY(0);opacity:0.4}40%{transform:translateY(-4px);opacity:1}}
+
+/* EXPENSE ITEMS */
+.section-label{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--ink3);margin-bottom:10px}
+.expense-list{display:flex;flex-direction:column;gap:6px}
+.exp-item{display:grid;grid-template-columns:36px 1fr auto;align-items:center;gap:12px;padding:12px 14px;background:var(--bg2);border:1px solid var(--line);border-radius:14px;transition:border-color .2s,background .2s;position:relative;overflow:hidden}
+.exp-item::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+.exp-item:hover{border-color:var(--line2);background:var(--bg3)}
+.exp-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.exp-main{min-width:0}
+.exp-name{font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.exp-meta{display:flex;align-items:center;gap:6px;margin-top:2px}
+.exp-cat-badge{font-size:10px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;padding:2px 7px;border-radius:6px}
+.exp-pay-badge{font-size:10px;color:var(--ink3);display:flex;align-items:center;gap:3px}
+.exp-date{font-size:10px;color:var(--ink3)}
+.exp-right{text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.exp-amt{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:500;color:var(--ink)}
+.exp-del{background:none;border:none;cursor:pointer;color:var(--ink3);font-size:14px;padding:2px;line-height:1;transition:color .2s;width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:4px}
+.exp-del:hover{color:var(--accent);background:rgba(255,107,71,0.1)}
+
+/* ─── HISTORY ─── */
+.history-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.hist-count{font-size:11px;color:var(--ink3);font-weight:600;letter-spacing:1px;text-transform:uppercase}
+.btn-ghost{padding:8px 14px;background:transparent;border:1px solid var(--line2);border-radius:10px;color:var(--ink3);font-size:11px;font-weight:700;font-family:'Syne',sans-serif;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:all .2s}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+.filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.filter-chip{padding:5px 12px;border:1px solid var(--line);border-radius:20px;font-size:11px;font-weight:600;font-family:'Syne',sans-serif;letter-spacing:0.5px;background:transparent;color:var(--ink3);cursor:pointer;transition:all .2s}
+.filter-chip.active{border-color:var(--accent);color:var(--accent);background:rgba(255,107,71,0.08)}
+.empty-state{text-align:center;padding:48px 24px;color:var(--ink3)}
+.empty-icon{font-size:40px;margin-bottom:12px;opacity:0.4}
+.empty-text{font-size:14px}
+
+/* ─── DASHBOARD ─── */
+.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:20px}
+.kpi{background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:16px;position:relative;overflow:hidden}
+.kpi::after{content:'';position:absolute;top:-20px;right:-20px;width:60px;height:60px;border-radius:50%;opacity:0.06}
+.kpi-label{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--ink3);margin-bottom:6px}
+.kpi-val{font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:500;color:var(--ink);line-height:1}
+.kpi-val .small{font-size:15px;color:var(--ink3)}
+.kpi-sub{font-size:11px;color:var(--ink3);margin-top:4px}
+.kpi-1::after{background:var(--accent)}
+.kpi-2::after{background:#4d9fff}
+.kpi-3::after{background:#b86bff}
+.kpi-4::after{background:#4ddb9f}
+
+.chart-section{background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px}
+.chart-title{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--ink3);margin-bottom:16px}
+.chart-wrap{height:220px;position:relative}
+.legend-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.leg-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink2)}
+.leg-dot{width:7px;height:7px;border-radius:2px;flex-shrink:0}
+
+.budget-section{background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px}
+.budget-row{margin-bottom:14px}
+.budget-row:last-child{margin-bottom:0}
+.budget-meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.budget-name{font-size:12px;font-weight:600;color:var(--ink2);display:flex;align-items:center;gap:6px}
+.budget-name-dot{width:6px;height:6px;border-radius:50%}
+.budget-nums{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink3)}
+.budget-track{background:var(--bg4);border-radius:4px;height:5px;overflow:hidden}
+.budget-fill{height:100%;border-radius:4px;transition:width .8s cubic-bezier(.25,.8,.25,1)}
+
+/* PAYMENT BREAKDOWN */
+.pay-breakdown{background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:16px}
+.pay-breakdown-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.pay-stat{background:var(--bg3);border-radius:12px;padding:12px;text-align:center}
+.pay-stat-icon{font-size:20px;margin-bottom:6px}
+.pay-stat-name{font-size:10px;color:var(--ink3);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+.pay-stat-val{font-family:'JetBrains Mono',monospace;font-size:14px;color:var(--ink);font-weight:500}
+.pay-stat-count{font-size:10px;color:var(--ink3);margin-top:2px}
+
+/* ─── INSIGHTS ─── */
+.insights-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.gen-btn{padding:10px 20px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:12px;font-size:12px;font-weight:700;font-family:'Syne',sans-serif;letter-spacing:1.5px;text-transform:uppercase;cursor:pointer;transition:all .2s}
+.gen-btn:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(255,107,71,0.3)}
+.insight-card{background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:10px;font-size:13px;color:var(--ink2);line-height:1.7;transition:border-color .2s;position:relative;overflow:hidden}
+.insight-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(var(--accent),var(--accent2))}
+.insight-card:hover{border-color:var(--line2)}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line2);border-radius:2px}
+</style>
+</head>
+<body>
+<div class="ambient ambient-1"></div>
+<div class="ambient ambient-2"></div>
+
+<div class="app">
+  <div class="header">
+    <div class="logo">
+      <div class="logo-name">Spend<span>wise</span></div>
+      <div class="logo-sub">AI Expense Tracker</div>
+    </div>
+    <div class="header-total">
+      <div class="header-total-label">Total Spent</div>
+      <div class="header-total-val"><span class="currency">₹</span><span id="total-display">0</span></div>
+    </div>
+  </div>
+
+  <nav class="nav">
+    <button class="nav-btn active" onclick="switchTab('add')">Add</button>
+    <button class="nav-btn" onclick="switchTab('history')">History</button>
+    <button class="nav-btn" onclick="switchTab('dashboard')">Dashboard</button>
+    <button class="nav-btn" onclick="switchTab('insights')">Insights</button>
+  </nav>
+
+  <!-- ── ADD ── -->
+  <div class="panel active" id="panel-add">
+    <div class="add-card">
+      <div class="add-card-title">
+        New Expense
+        <span class="ai-indicator"><span class="ai-dot"></span>AI Classify</span>
+      </div>
+
+      <div class="input-row">
+        <div class="inp-wrap" style="flex:2">
+          <div class="inp-label">Description</div>
+          <input class="inp" id="expText" type="text" placeholder="pizza, uber, netflix…"/>
+        </div>
+        <div class="inp-wrap" style="flex:1">
+          <div class="inp-label">Amount</div>
+          <div style="position:relative">
+            <span class="inp-prefix">₹</span>
+            <input class="inp inp-amt inp-amt-field" id="expAmt" type="number" placeholder="0" min="0"/>
+          </div>
+        </div>
+      </div>
+
+      <div class="inp-label" style="margin-bottom:10px">Payment Method</div>
+      <div class="pay-grid">
+        <div class="pay-opt">
+          <input type="radio" name="payMethod" id="pm-upi" value="UPI" checked/>
+          <label for="pm-upi"><span class="pay-icon">📱</span><span class="pay-name">UPI</span></label>
+        </div>
+        <div class="pay-opt">
+          <input type="radio" name="payMethod" id="pm-card" value="Card"/>
+          <label for="pm-card"><span class="pay-icon">💳</span><span class="pay-name">Card</span></label>
+        </div>
+        <div class="pay-opt">
+          <input type="radio" name="payMethod" id="pm-cash" value="Cash"/>
+          <label for="pm-cash"><span class="pay-icon">💵</span><span class="pay-name">Cash</span></label>
+        </div>
+        <div class="pay-opt">
+          <input type="radio" name="payMethod" id="pm-wallet" value="Wallet"/>
+          <label for="pm-wallet"><span class="pay-icon">👜</span><span class="pay-name">Wallet</span></label>
+        </div>
+        <div class="pay-opt">
+          <input type="radio" name="payMethod" id="pm-netbank" value="Net Banking"/>
+          <label for="pm-netbank"><span class="pay-icon">🏦</span><span class="pay-name">Net Bank</span></label>
+        </div>
+        <div class="pay-opt">
+          <input type="radio" name="payMethod" id="pm-emi" value="EMI"/>
+          <label for="pm-emi"><span class="pay-icon">📋</span><span class="pay-name">EMI</span></label>
+        </div>
+      </div>
+
+      <div id="thinking-row"></div>
+      <button class="add-btn" id="addBtn" onclick="addExpense()">+ Add Expense</button>
+    </div>
+
+    <div class="section-label" id="recent-label" style="display:none">Recent</div>
+    <div class="expense-list" id="recent-list"></div>
+  </div>
+
+  <!-- ── HISTORY ── -->
+  <div class="panel" id="panel-history">
+    <div class="history-header">
+      <span class="hist-count" id="hist-count">0 expenses</span>
+      <button class="btn-ghost" onclick="clearAll()">Clear All</button>
+    </div>
+    <div class="filter-row" id="filter-row">
+      <button class="filter-chip active" onclick="setFilter('all',this)">All</button>
+      <button class="filter-chip" onclick="setFilter('food',this)">🍕 Food</button>
+      <button class="filter-chip" onclick="setFilter('travel',this)">✈️ Travel</button>
+      <button class="filter-chip" onclick="setFilter('entertainment',this)">🎮 Entertain</button>
+      <button class="filter-chip" onclick="setFilter('shopping',this)">🛍️ Shopping</button>
+      <button class="filter-chip" onclick="setFilter('bills',this)">⚡ Bills</button>
+    </div>
+    <div class="expense-list" id="history-list"></div>
+    <div id="history-empty" class="empty-state">
+      <div class="empty-icon">📭</div>
+      <div class="empty-text">No expenses yet</div>
+    </div>
+  </div>
+
+  <!-- ── DASHBOARD ── -->
+  <div class="panel" id="panel-dashboard">
+    <div class="kpi-grid" id="kpi-grid"></div>
+    <div class="pay-breakdown">
+      <div class="chart-title">Payment Methods</div>
+      <div class="pay-breakdown-grid" id="pay-breakdown-grid"></div>
+    </div>
+    <div class="chart-section">
+      <div class="chart-title">Spending by Category</div>
+      <div class="chart-wrap"><canvas id="pieChart"></canvas></div>
+      <div class="legend-grid" id="chart-legend"></div>
+    </div>
+    <div class="budget-section">
+      <div class="chart-title">Monthly Budget Tracker</div>
+      <div id="budget-bars" style="margin-top:14px"></div>
+    </div>
+  </div>
+
+  <!-- ── INSIGHTS ── -->
+  <div class="panel" id="panel-insights">
+    <div class="insights-top">
+      <div>
+        <div style="font-size:18px;font-family:'Playfair Display',serif;font-weight:700">AI Insights</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:2px">Claude analyzes your spending</div>
+      </div>
+      <button class="gen-btn" onclick="getInsights()">Analyze ↗</button>
+    </div>
+    <div id="insights-content"></div>
+  </div>
+</div>
+
+<script>
+const CATS = {
+  food:    {color:'#ff6b47',bg:'rgba(255,107,71,0.12)',emoji:'🍕'},
+  travel:  {color:'#4d9fff',bg:'rgba(77,159,255,0.12)',emoji:'✈️'},
+  entertainment:{color:'#b86bff',bg:'rgba(184,107,255,0.12)',emoji:'🎮'},
+  shopping:{color:'#ffb347',bg:'rgba(255,179,71,0.12)',emoji:'🛍️'},
+  bills:   {color:'#4ddb9f',bg:'rgba(77,219,159,0.12)',emoji:'⚡'},
+  health:  {color:'#ff4d88',bg:'rgba(255,77,136,0.12)',emoji:'💊'},
+  other:   {color:'#888',   bg:'rgba(136,136,136,0.12)',emoji:'📦'}
+};
+const BUDGETS = {food:5000,travel:3000,entertainment:2000,shopping:4000,bills:3000,health:2000,other:2000};
+const PAY_ICONS = {'UPI':'📱','Card':'💳','Cash':'💵','Wallet':'👜','Net Banking':'🏦','EMI':'📋'};
+
+let expenses = JSON.parse(localStorage.getItem('sw_expenses')||'[]');
+let pieChart = null;
+let histFilter = 'all';
+
+function save(){
+  localStorage.setItem('sw_expenses',JSON.stringify(expenses));
+  updateHeaderTotal();
+}
+
+function updateHeaderTotal(){
+  const t = expenses.reduce((s,e)=>s+Number(e.amt),0);
+  document.getElementById('total-display').textContent = t.toLocaleString('en-IN');
+}
+
+function getCat(c){return CATS[c]||CATS.other}
+function getPayIcon(p){return PAY_ICONS[p]||'💸'}
+
+function getPayMethod(){
+  const sel = document.querySelector('input[name=payMethod]:checked');
+  return sel ? sel.value : 'UPI';
+}
+
+function renderItem(e,i){
+  const cat = getCat(e.cat);
+  return `<div class="exp-item" style="--item-color:${cat.color}">
+    <div style="border-left:3px solid ${cat.color};position:absolute;left:0;top:0;bottom:0;border-radius:14px 0 0 14px"></div>
+    <div class="exp-icon" style="background:${cat.bg}">${cat.emoji}</div>
+    <div class="exp-main">
+      <div class="exp-name">${e.text}</div>
+      <div class="exp-meta">
+        <span class="exp-cat-badge" style="background:${cat.bg};color:${cat.color}">${e.cat}</span>
+        <span class="exp-pay-badge">${getPayIcon(e.pay||'UPI')} ${e.pay||'UPI'}</span>
+        <span class="exp-date">${e.date}</span>
+      </div>
+    </div>
+    <div class="exp-right">
+      <span class="exp-amt">₹${Number(e.amt).toLocaleString('en-IN')}</span>
+      <button class="exp-del" onclick="delExpense(${i})" title="Delete">✕</button>
+    </div>
+  </div>`;
+}
+
+function renderRecent(){
+  const list = document.getElementById('recent-list');
+  const lbl = document.getElementById('recent-label');
+  const last5 = expenses.slice(-5).reverse();
+  if(last5.length){
+    lbl.style.display='block';
+    list.innerHTML = last5.map((e,i)=>renderItem(e,expenses.length-1-i)).join('');
+  } else {
+    lbl.style.display='none';
+    list.innerHTML='';
+  }
+}
+
+function renderHistory(){
+  const list = document.getElementById('history-list');
+  const empty = document.getElementById('history-empty');
+  const count = document.getElementById('hist-count');
+  const filtered = histFilter==='all' ? expenses : expenses.filter(e=>e.cat===histFilter);
+  count.textContent = `${expenses.length} expense${expenses.length!==1?'s':''}`;
+  if(!expenses.length){list.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+  list.innerHTML = [...filtered].reverse().map((e,i)=>{
+    const realIdx = expenses.indexOf(e);
+    return renderItem(e,realIdx);
+  }).join('');
+}
+
+function setFilter(f,el){
+  histFilter=f;
+  document.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  renderHistory();
+}
+
+function renderDashboard(){
+  const total = expenses.reduce((s,e)=>s+Number(e.amt),0);
+  const bycat = {};
+  const bypay = {};
+  expenses.forEach(e=>{
+    bycat[e.cat]=(bycat[e.cat]||0)+Number(e.amt);
+    const p = e.pay||'UPI';
+    bypay[p]=(bypay[p]||0)+Number(e.amt);
+  });
+  const topCat = Object.entries(bycat).sort((a,b)=>b[1]-a[1])[0];
+  const avg = expenses.length ? Math.round(total/expenses.length) : 0;
+  const thisMonth = expenses.filter(e=>{const d=new Date();return e.date===d.toLocaleDateString('en-IN')}).length;
+
+  document.getElementById('kpi-grid').innerHTML = `
+    <div class="kpi kpi-1">
+      <div class="kpi-label">Total Spent</div>
+      <div class="kpi-val"><span class="small">₹</span>${total.toLocaleString('en-IN')}</div>
+      <div class="kpi-sub">${expenses.length} transactions</div>
+    </div>
+    <div class="kpi kpi-2">
+      <div class="kpi-label">Avg per Entry</div>
+      <div class="kpi-val"><span class="small">₹</span>${avg.toLocaleString('en-IN')}</div>
+      <div class="kpi-sub">per transaction</div>
+    </div>
+    <div class="kpi kpi-3">
+      <div class="kpi-label">Top Category</div>
+      <div class="kpi-val" style="font-size:18px">${topCat ? getCat(topCat[0]).emoji+' '+topCat[0] : '—'}</div>
+      <div class="kpi-sub">${topCat ? '₹'+topCat[1].toLocaleString('en-IN') : 'no data'}</div>
+    </div>
+    <div class="kpi kpi-4">
+      <div class="kpi-label">Today</div>
+      <div class="kpi-val">${thisMonth}</div>
+      <div class="kpi-sub">transactions</div>
+    </div>
+  `;
+
+  // Payment breakdown
+  const payMethods = ['UPI','Card','Cash','Wallet','Net Banking','EMI'];
+  const payGrid = document.getElementById('pay-breakdown-grid');
+  const usedPays = payMethods.filter(p=>bypay[p]);
+  if(usedPays.length){
+    payGrid.style.gridTemplateColumns = `repeat(${Math.min(3,usedPays.length)},1fr)`;
+    payGrid.innerHTML = usedPays.map(p=>`
+      <div class="pay-stat">
+        <div class="pay-stat-icon">${getPayIcon(p)}</div>
+        <div class="pay-stat-name">${p}</div>
+        <div class="pay-stat-val">₹${bypay[p].toLocaleString('en-IN')}</div>
+        <div class="pay-stat-count">${expenses.filter(e=>(e.pay||'UPI')===p).length} txns</div>
+      </div>
+    `).join('');
+  } else {
+    payGrid.innerHTML = '<div style="color:var(--ink3);font-size:13px;grid-column:1/-1;text-align:center;padding:16px">No data yet</div>';
+  }
+
+  // Chart
+  const cats = Object.keys(CATS);
+  const vals = cats.map(c=>bycat[c]||0);
+  const colors = cats.map(c=>getCat(c).color);
+  const nonZero = cats.filter((_,i)=>vals[i]>0);
+
+  document.getElementById('chart-legend').innerHTML = cats.map((c,i)=>vals[i]>0?
+    `<span class="leg-item"><span class="leg-dot" style="background:${colors[i]}"></span>${getCat(c).emoji} ${c} <strong style="color:var(--ink);margin-left:2px">₹${vals[i].toLocaleString('en-IN')}</strong></span>`:''
+  ).filter(Boolean).join('');
+
+  if(pieChart)pieChart.destroy();
+  if(expenses.length){
+    pieChart = new Chart(document.getElementById('pieChart'),{
+      type:'doughnut',
+      data:{labels:cats,datasets:[{data:vals,backgroundColor:colors,borderWidth:0,hoverOffset:6}]},
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{label:ctx=>`${getCat(ctx.label).emoji} ${ctx.label}: ₹${ctx.raw.toLocaleString('en-IN')}`},
+            backgroundColor:'#1c1c20',borderColor:'rgba(255,255,255,0.1)',borderWidth:1,
+            titleColor:'#f0ede8',bodyColor:'#a8a5a0',padding:10,cornerRadius:8}
+        },
+        cutout:'65%'
+      }
+    });
+  }
+
+  // Budget bars
+  document.getElementById('budget-bars').innerHTML = cats.map(c=>{
+    const spent=bycat[c]||0;const budget=BUDGETS[c];const pct=Math.min(100,Math.round(spent/budget*100));
+    const col = pct>=90?'#ff6b47':pct>=70?'#ffb347':getCat(c).color;
+    return `<div class="budget-row">
+      <div class="budget-meta">
+        <div class="budget-name"><span class="budget-name-dot" style="background:${getCat(c).color}"></span>${getCat(c).emoji} ${c}</div>
+        <div class="budget-nums">₹${spent.toLocaleString('en-IN')} / ₹${budget.toLocaleString('en-IN')} · ${pct}%</div>
+      </div>
+      <div class="budget-track"><div class="budget-fill" style="width:${pct}%;background:${col}"></div></div>
+    </div>`;
+  }).join('');
+}
+
+async function classifyExpense(text){
+  try{
+    const res = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:50,
+        system:'You are an expense classifier. Return ONLY one word from: food, travel, entertainment, shopping, bills, health, other. No punctuation or explanation.',
+        messages:[{role:'user',content:text}]
+      })
+    });
+    const d = await res.json();
+    const cat = d.content?.[0]?.text?.trim().toLowerCase().replace(/[^a-z]/g,'');
+    return CATS[cat] ? cat : 'other';
+  }catch(e){return 'other'}
+}
+
+async function addExpense(){
+  const text = document.getElementById('expText').value.trim();
+  const amt = document.getElementById('expAmt').value.trim();
+  if(!text||!amt||isNaN(amt)||Number(amt)<=0)return;
+
+  const btn = document.getElementById('addBtn');
+  const tr = document.getElementById('thinking-row');
+  btn.disabled=true;
+  document.getElementById('expText').disabled=true;
+  tr.innerHTML=`<div class="thinking-row"><span style="font-size:13px;color:var(--accent);font-style:italic">Classifying</span><span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span></div>`;
+
+  const cat = await classifyExpense(text);
+  const pay = getPayMethod();
+  expenses.push({text,amt:Number(amt),cat,pay,date:new Date().toLocaleDateString('en-IN')});
+  save();
+
+  tr.innerHTML='';
+  document.getElementById('expText').value='';
+  document.getElementById('expAmt').value='';
+  document.getElementById('expText').disabled=false;
+  btn.disabled=false;
+  document.getElementById('expText').focus();
+
+  renderRecent();
+}
+
+function delExpense(i){
+  expenses.splice(i,1);save();renderRecent();renderHistory();renderDashboard();
+}
+function clearAll(){
+  if(confirm('Clear all expenses?')){expenses=[];save();renderRecent();renderHistory();renderDashboard();}
+}
+
+document.getElementById('expText').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('expAmt').focus()});
+document.getElementById('expAmt').addEventListener('keydown',e=>{if(e.key==='Enter')addExpense()});
+
+function switchTab(t){
+  document.querySelectorAll('.nav-btn').forEach((el,i)=>{el.classList.toggle('active',['add','history','dashboard','insights'][i]===t)});
+  document.querySelectorAll('.panel').forEach(el=>el.classList.remove('active'));
+  document.getElementById('panel-'+t).classList.add('active');
+  if(t==='history')renderHistory();
+  if(t==='dashboard')renderDashboard();
+}
+
+async function getInsights(){
+  const el = document.getElementById('insights-content');
+  if(!expenses.length){el.innerHTML='<div class="insight-card">Add some expenses first to get AI insights.</div>';return;}
+  el.innerHTML='<div class="insight-card" style="color:var(--ink3);font-style:italic">Analyzing your spending patterns<span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span></div>';
+
+  const bycat = {};
+  const bypay = {};
+  expenses.forEach(e=>{
+    bycat[e.cat]=(bycat[e.cat]||0)+Number(e.amt);
+    const p=e.pay||'UPI';bypay[p]=(bypay[p]||0)+Number(e.amt);
+  });
+  const total = expenses.reduce((s,e)=>s+Number(e.amt),0);
+  const summary = Object.entries(bycat).map(([c,v])=>`${c}: ₹${v}`).join(', ');
+  const paysum = Object.entries(bypay).map(([p,v])=>`${p}: ₹${v}`).join(', ');
+
+  try{
+    const res = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:600,
+        system:'You are a personal finance advisor for Indian users (₹ INR). Give 4 short, actionable budget insights. Include one insight about payment method habits. Be friendly and specific. Each insight = one short paragraph starting with an emoji.',
+        messages:[{role:'user',content:`Total: ₹${total}. By category: ${summary}. By payment method: ${paysum}. Monthly budgets: food ₹5000, travel ₹3000, entertainment ₹2000, shopping ₹4000, bills ₹3000. Give insights.`}]
+      })
+    });
+    const d = await res.json();
+    const txt = d.content?.[0]?.text||'Could not load insights.';
+    el.innerHTML = txt.split('\n').filter(l=>l.trim()).map(l=>`<div class="insight-card">${l}</div>`).join('');
+  }catch(e){
+    el.innerHTML='<div class="insight-card">Could not connect to AI. Please try again.</div>';
+  }
+}
+
+// Init
+renderRecent();
+updateHeaderTotal();
+</script>
+</body>
+</html>
